@@ -15,6 +15,8 @@
 
 > [Progressive Disclosure of Agent Tools from the Perspective of CLI Tool Style](/blog/en/progressive-disclosure-of-agent-tools-from-the-perspective-of-cli-tool-style.md)
 
+> [Progressive Disclosure of Agent Tools from the Perspective of CLI Tool Style](/blog/en/progressive-disclosure-of-agent-tools-from-the-perspective-of-cli-tool-style.md)
+
 > A powerful tool to route Claude Code requests to different models and customize any request.
 
 ![](blog/images/claude-code.png)
