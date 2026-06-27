@@ -1,6 +1,6 @@
 # Fork tracking — intarweb/claude-code-router
 
-This is a soft fork of [`musistudio/claude-code-router`](https://github.com/musistudio/claude-code-router). We track upstream HEAD and publish a HEAD-tracked image to GHCR with any open intarweb→upstream PRs cherry-picked on top.
+This is a soft fork of [`musistudio/claude-code-router`](https://github.com/musistudio/claude-code-router). **Pinned to upstream `v2.0.0`** (the last server release — see [Why pinned to v2.0](#why-pinned-to-v20)). We publish an image to GHCR from that pinned base with our fork-local patches (`FORK_CARRIED_COMMITS`) applied on top.
 
 > All forks we manage with the sync-upstream + from-source-build pattern live under the [`intarweb`](https://github.com/intarweb) GitHub org. See the `ghcr-fork-mirror` skill for the canonical recipe.
 
@@ -9,7 +9,7 @@ This is a soft fork of [`musistudio/claude-code-router`](https://github.com/musi
 | Branch | Purpose | Source of truth |
 |---|---|---|
 | `main` | Upstream-clean tracking + ops overlay (canonical workflows + FORK_INFO.md) | upstream + us |
-| `intarweb-dev` | Deploy track — `main` + cherry-pick of every open intarweb→upstream PR. Drives `:latest`. | us |
+| `intarweb-dev` | Deploy track — `main` + the `FORK_CARRIED_COMMITS` fork-local carries (+ any open intarweb→upstream PRs). Drives `:latest`. | us |
 | `feat/*`, `fix/*` | Individual patch branches we PR upstream | us |
 
 ## Upstream sync
@@ -17,10 +17,26 @@ This is a soft fork of [`musistudio/claude-code-router`](https://github.com/musi
 | Property | Value |
 |---|---|
 | Upstream | [`musistudio/claude-code-router`](https://github.com/musistudio/claude-code-router) |
-| Upstream branch tracked | `main` |
+| Upstream ref tracked | **`v2.0.0`** (pinned tag, via `vars.UPSTREAM_TRACK_REF`; absent → defaults to `main`) |
 | Sync cadence | Hourly (gated by `vars.SYNC_CADENCE_HOURS`) + `workflow_dispatch` + `fold-on-push` re-trigger on PR-branch push |
-| Sync mechanism | Hard-reset `main` to `upstream/main`, re-apply ops overlay, regen `intarweb-dev` by cherry-picking every open intarweb→upstream PR |
+| Sync mechanism | Hard-reset `main` to the tracked ref (`upstream/v2.0.0`), re-apply ops overlay, regen `intarweb-dev` by cherry-picking open intarweb→upstream PRs **+ the `FORK_CARRIED_COMMITS` fork-local carries** |
 | Sync workflow | [`.github/workflows/sync-upstream.yml`](.github/workflows/sync-upstream.yml) |
+
+## Why pinned to v2.0
+
+> **Pinned to upstream `v2.0.0` / `e270dea` (2026-06-27).** Upstream `musistudio/claude-code-router` pivoted at **v3.0.0 to an Electron desktop app** on a different stack (`@the-next-ai/ai-gateway`, raw Node `http` server, `electron-builder`) — the in-repo Fastify server + `@musistudio/llms` transformer layer are **gone**, and `npm run build` now produces desktop installers, not a server. The fleet runs CCR as a **headless Docker HTTP proxy** to vLLM, which is the **v2.x** architecture (Fastify + `@musistudio/llms` + PM2; this is also what upstream's own Docker-deploy doc describes, sourced from `e270dea`). So this fork tracks the last v2.x release instead of upstream HEAD.
+>
+> The fleet patches ride as **`FORK_CARRIED_COMMITS`** fork-local carries — their upstream PRs are closing-unmerged against the v3.0 line, so the open-PR cherry-pick loop alone would silently drop them (honest-fact #98):
+>
+> | Carry | Upstream PR | What |
+> |---|---|---|
+> | `4fe8c64` | #1432 | Docker base `node:20`→`node:22-alpine` (node:sqlite transitive) |
+> | `f532069` | #1430 | Build the UI inside Docker (no out-of-context pre-build) |
+> | `78f3a63` | #1439 | `reasoning_details` + `reasoning` passthrough (opt-in) |
+> | `d0767ba` | #1449 | Fastify `keepAliveTimeout` 650000 + connection/request timeout 0 |
+> | `80a2454` | #1356 | Track content-block type (fixes `text_delta` sent to `tool_use` blocks) |
+>
+> To resume tracking upstream HEAD (e.g. if a future v3.x ships a headless server), clear `vars.UPSTREAM_TRACK_REF` and re-home the patches.
 
 ## Build pipeline
 
@@ -68,11 +84,12 @@ gh workflow run "Sync from upstream + auto-regen intarweb-dev" --repo intarweb/c
 gh workflow run "Build from source → GHCR" --repo intarweb/claude-code-router --ref intarweb-dev
 ```
 
-**Add a new patch to intarweb-dev:**
+**Add a new patch to intarweb-dev (fork-local carry — the pinned-fork model):**
 ```bash
-git checkout -b feat/my-thing upstream/main
-# ...do work...
-git push origin feat/my-thing
-gh pr create --repo musistudio/claude-code-router --base main --head intarweb:feat/my-thing
-# Next sync-upstream tick auto-cherry-picks the new PR onto intarweb-dev.
+git checkout -b fix/my-thing upstream/v2.0.0   # branch off the pinned ref, single-parent
+# ...do work...; commit (signed)
+git push origin fix/my-thing
+# Append the bare SHA to vars.FORK_CARRIED_COMMITS:  <sha>|<upstream-pr-to-watch>
+# Next sync-upstream tick cherry-picks it onto intarweb-dev (must be single-parent + apply clean).
 ```
+> While pinned to v2.0.0, upstream-bound PRs against `musistudio:main` (now v3.0) are pointless — carry patches locally via `FORK_CARRIED_COMMITS` instead.
